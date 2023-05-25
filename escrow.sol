@@ -985,29 +985,14 @@ abstract contract Ownable is Context {
     }
 }
 
-interface IPancakeswapRouterv2 {
-    function swapExactETHForTokens(
-        uint256 amountOutMin,
-        address[] calldata path,
-        address to,
-        uint256 deadline
-    ) external payable returns (uint256[] memory amounts);
 
-    function getAmountsOut(uint256 amountIn, address[] calldata path)
-        external
-        view
-        returns (uint256[] memory amounts);
-}
 
 contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
     using SafeMath for uint256;
 
-    IPancakeswapRouterv2 public pancakeswapRouter;
     IERC20 public USDT;
     IERC20 public USDC;
     IERC20 public DAI;
-    IERC20 public coin;
-    IERC20 public WBNB;
     IERC20[] public tokens;
 
     uint256 public _gigCounter = 0;
@@ -1085,18 +1070,14 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
     function setValues(
         IERC20 _USDT,
         IERC20 _USDC,
-        IERC20 _DAI,
-        IERC20 _coin,
-        IERC20 _WBNB,
-        IPancakeswapRouterv2 _router
+        IERC20 _DAI 
+      
     ) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        WBNB = _WBNB;
+      
         USDT = _USDT;
         USDC = _USDC;
         DAI = _DAI;
         tokens = [_USDT, _USDC, _DAI,IERC20( address(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE))];
-        pancakeswapRouter = _router;
-        coin = _coin;
     }
 
     function set_platformFeePercentage(uint256 _platformFee)
@@ -1113,22 +1094,6 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
         platformFeeAccount = _platformFeeAccount;
         _setupRole(DEFAULT_ADMIN_ROLE, _platformFeeAccount);
         _setRoleAdmin(DEFAULT_ADMIN_ROLE, DEFAULT_ADMIN_ROLE);
-    }
-
-
-    function setPancakeRouter(IPancakeswapRouterv2 _pancakeswapRouter)
-        public
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {
-        pancakeswapRouter = _pancakeswapRouter;
-    }
-
-    function setWBNB(IERC20 _WBNB) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        WBNB = _WBNB;
-    }
-
-    function setcoin(IERC20 _coin) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        coin = _coin;
     }
 
     /*
