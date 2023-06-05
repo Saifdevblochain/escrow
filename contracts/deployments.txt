@@ -1,0 +1,16 @@
+nft contract
+https://mumbai.polygonscan.com/address/0xe4F88f1502F109c679a43FbFf2caD89ab41f0BaF
+
+marketplace
+https://mumbai.polygonscan.com/address/0x073BFDBC3906EC25bB7BD712b4b25DbD20BC66C8#code
+
+
+stable
+https://mumbai.polygonscan.com/address/0x14edeb2bc9970e0da461c9f85ad47b3d96363c1a#code
+
+graph minting;
+https://api.thegraph.com/subgraphs/name/saifdevblochain/buyandsellstablenft
+
+
+graph-buy and sell
+https://api.studio.thegraph.com/query/41265/mintingdappbuysell/0.02.1
