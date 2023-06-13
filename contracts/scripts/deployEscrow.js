@@ -8,17 +8,18 @@ async function verify(address, constructorArguments) {
     constructorArguments
   })
 }
-
+ 
 async function main() {
 
-  const StableMinting_ = await ethers.getContractFactory("nftStable");
-  const StableMinting = await StableMinting_.deploy( );
-  await StableMinting.deployed();
+  const escrow_main_ = await ethers.getContractFactory("escrow_main");
+ 
+  const escrow_main = await escrow_main_.deploy( );
+  await escrow_main.deployed();
 
-  console.log(`StableMinting deployed to ${StableMinting.address}`);
+  console.log(`escrow_main deployed to ${escrow_main.address}`);
 
   await new Promise(resolve => setTimeout(resolve, 10000));
-  verify(StableMinting.address, []);
+  verify(escrow_main.address, [ ]);
 }
 
 // We recommend this pattern to be able to use async/await everywhere

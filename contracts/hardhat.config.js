@@ -7,12 +7,18 @@ module.exports = {
     compilers: [
       {
         version: "0.8.9",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          },
+        },
       },
       {
         version: "0.5.16",
         settings: {
           optimizer: {
-            enabled: false,
+            enabled: true,
             runs: 200,
           },
         },
@@ -23,6 +29,7 @@ module.exports = {
     mumbai: {
       url: process.env.URL,
       accounts: [process.env.PRIVATE_KEY],
+      allowUnlimitedContractSize: true,
     },
   },
   etherscan: {

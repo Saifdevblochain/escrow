@@ -918,6 +918,7 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
         uint256 gigCreationTime;
         uint256 gigDeadlineTime;
         string title;
+        string category;
         string description;
         IERC20 currency;
     }
@@ -928,39 +929,35 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
         uint256 time;
     }
 
+    struct statuses {
+        string inProgress;
+        string disputed;
+        string completed;
+    }
+
+    statuses public status;
+
     mapping(uint256 => gig) public gigMap;
 
     mapping(address => uint256[]) public userMap;
+    mapping(uint => uint ) public checkStatus; 
 
     mapping(uint256 => uint256[]) public pricePerMilestone;
-    mapping(uint256 => mapping(uint256 => bool))
-        public milestoneApprovedByBuyer; // gig id => milestone id => (true/false)
+    mapping(uint256 => mapping(uint256 => bool)) public milestoneApprovedByBuyer; // gig id => milestone id => (true/false)
     mapping(uint256 => bool) public disputed;
     mapping(uint256 => dispute) public disputeDetails;
 
-    event GigCreatedBySeller(
-        uint256 gigIndex,
-        address indexed seller,
-        address indexed buyer,
-        uint256 creationTime
-    );
-    event GigCreatedByBuyer(
-        uint256 gigIndex,
-        address indexed seller,
-        address indexed buyer,
-        uint256 creationTime
-    );
-    event GigApprovedBySeller(
-        uint256 gigIndex,
-        address indexed approvedBySeller
-    );
-    event GigApprovedByBuyer(uint256 gigIndex, address indexed approvedByBuyer);
+    mapping ( uint => uint) public mileStoneApprovedLatest;
+
+    event GigCreatedBySeller(uint256 gigIndex, address indexed seller,address indexed buyer,uint256 creationTime);
+    event GigCreatedByBuyer(uint256 gigIndex,address indexed seller,address indexed buyer, uint256 creationTime);
+    event GigApprovedBySeller(uint amount, gig gigData,uint256 gigIndex,address indexed approvedBySeller);
+    event GigApprovedByBuyer(uint amount, gig gigData, uint256 gigIndex, address indexed approvedByBuyer);
     event GigStatusChanged(uint256 gigIndex, bool activeStatus);
-    event MilestoneApproved(
-        uint256 gigIndex,
-        address indexed approvedBy,
-        uint256 milestone
-    );
+    event MilestoneApproved(uint256 gigIndex,address indexed approvedBy,uint256 milestone);
+
+    event Status( uint gigIndex, string status );
+
 
     constructor() {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -968,6 +965,7 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
 
         platformFee = 10; // 1%
         platformFeeAccount = msg.sender;
+        status = statuses("In Progress","Disputed","Completed");
     }
 
     function setValues(
@@ -1009,12 +1007,12 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
     function seller_makeGig(
         uint256 _choose,
         string memory _title,
+        string memory _category,
         string memory _description,
         address _buyer,
         string memory _milestones,
         uint256[] memory _pricePerMilestone,
-        uint256 deadLineTimeInSeconds
-    ) public returns (uint256) {
+        uint256 deadLineTimeInSeconds) public returns (uint256) {
         _gigCounter++;
         gigMap[_gigCounter] = gig(
             msg.sender,
@@ -1027,6 +1025,7 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
             block.timestamp,
             deadLineTimeInSeconds,
             _title,
+            _category,
             _description,
             tokens[_choose]
         );
@@ -1070,7 +1069,6 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
         );
 
         uint256 totalFee = 0;
-        // if (gigMap[_id].feePaidByBuyer) {
         for (uint256 i = 0; i < gigMap[_id].numberOfMilestones; i++) {
             totalFee = totalFee.add((pricePerMilestone[_id][i]));
         }
@@ -1098,24 +1096,27 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
                 _platformFee
             );
         }
-        // }
-
+       uint[] memory amounts =  pricePerMilestone[_id];
+        uint amount;
+       for (uint i; i<amounts.length; i++){
+        amount+=amounts [i];
+       }
         gigMap[_id].approvedByBuyer = true;
-        gigMap[_id].gigDeadlineTime =
-            block.timestamp +
-            gigMap[_id].gigDeadlineTime;
-        emit GigApprovedByBuyer(_id, msg.sender);
+        gigMap[_id].gigDeadlineTime = block.timestamp +gigMap[_id].gigDeadlineTime;
+        checkStatus[_id]= 1;
+
+        emit GigApprovedByBuyer(amount, gigMap[_id], _id, msg.sender);
+        emit Status (_id,  "In Progress" ) ;
     }
 
     /*
-
---------- FLOW : Buyer MAKING A GIG ---------
-
-*/
+    --------- FLOW : Buyer MAKING A GIG ---------
+    */
 
     function buyer_makeGig(
         uint256 _choose,
         string memory _title,
+        string memory _cateogry,
         string memory _description,
         address _seller,
         string memory _milestones,
@@ -1136,6 +1137,7 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
             block.timestamp,
             deadLineTimeInSeconds,
             _title,
+            _cateogry,
             _description,
             tokens[_choose]
         );
@@ -1145,11 +1147,9 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
         uint256 _id = _gigCounter;
         uint256 totalFee = 0;
 
-        // if (gigMap[_id].feePaidByBuyer) {
         for (uint256 i = 0; i < gigMap[_id].numberOfMilestones; i++) {
             totalFee = totalFee.add((pricePerMilestone[_id][i]));
         }
-        // uint256 _platformFee = totalFee.mul(platformFee).div(1000);
         if (_choose < 3) {
             require(
                 gigMap[_id].currency.allowance(msg.sender, address(this)) >=
@@ -1161,7 +1161,6 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
                 address(this),
                 totalFee
             ); // Taking money into Escrow
-            // gigMap[_id].currency.transferFrom(msg.sender,platformFeeAccount, platformFee);
         } else {
             require(msg.value >= totalFee, "Send Correct Eth Value");
             payable(address(this)).transfer(totalFee);
@@ -1179,9 +1178,6 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
         return toReturn;
     }
 
-    // [10000000000000000,10000000000000000]
-    // 0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2
-    // 1685890280
     function buyer_flipGigStatus(uint256 _id) public {
         require(gigMap[_id].buyer == msg.sender, "Not a buyer of this Gig");
         require(
@@ -1216,11 +1212,6 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
 
         for (uint256 i = 0; i < gigMap[_id].numberOfMilestones; i++) {
             totalFee = totalFee.add((pricePerMilestone[_id][i]));
-
-            // uint256 _platformFeeTemp = pricePerMilestone[_id][i]
-            //     .mul(platformFee)
-            //     .div(1000);
-            // pricePerMilestone[_id][i] -= _platformFeeTemp;
         }
 
         uint256 _platformFee = totalFee.mul(platformFee).div(1000);
@@ -1230,20 +1221,28 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
             (gigMap[_id].currency).transfer(platformFeeAccount, _platformFee);
             // Taking platform Fee from escrow
         }
-        emit GigApprovedBySeller(_id, msg.sender);
+        uint[] memory amounts = pricePerMilestone[_id] ;
+        uint amount;
+        for (uint i; i<amounts.length; i++){
+         amount+=amounts [i];
+        }
+        checkStatus[_id]= 1;
+        emit GigApprovedBySeller( amount, gigMap[_id], _id, msg.sender);
+        emit Status ( _id, "In Progress" ) ;
     }
 
     /*
-
---------- FLOW : Seller Delivers Milestone and Buyer approved Milestone ---------
-
-*/
+    --------- FLOW : Seller Delivers Milestone and Buyer approved Milestone ---------
+    */
 
     function buyer_approveMilestone(uint256 _gigId, uint256 _milestoneId)
         public
         nonReentrant
         notDisputed(_milestoneId)
     {
+        require(checkStatus[_gigId] == 1, "Id Does not Exist");
+
+        
         require(gigMap[_gigId].buyer == msg.sender, "Not a buyer of this Gig");
         require(
             milestoneApprovedByBuyer[_gigId][_milestoneId] == false,
@@ -1262,20 +1261,26 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
             gigMap[_gigId].approvedBySeller == true,
             "Gig not Approved by Seller"
         );
-
         milestoneApprovedByBuyer[_gigId][_milestoneId] = true;
         // giving milestone money to Seller
+
+        uint fee = pricePerMilestone[_gigId][_milestoneId].mul(platformFee).div(1000);
         if (gigMap[_gigId].currency == tokens[tokens.length - 1]) {
             payable(gigMap[_gigId].seller).transfer(
-                pricePerMilestone[_gigId][_milestoneId]
+                pricePerMilestone[_gigId][_milestoneId]-fee
             );
         } else {
             (gigMap[_gigId].currency).transfer(
                 gigMap[_gigId].seller,
-                pricePerMilestone[_gigId][_milestoneId]
+                pricePerMilestone[_gigId][_milestoneId]-fee
             );
         }
         emit MilestoneApproved(_gigId, msg.sender, _milestoneId);
+        mileStoneApprovedLatest[_gigId]+=1;
+        if(_milestoneId == gigMap[_gigId].numberOfMilestones-1 ){
+            checkStatus[_gigId]= 3;
+            emit Status( _gigId, "Completed");
+        }
     }
 
     function getPriceOfMilestonesOfGig(uint256 _id)
@@ -1288,13 +1293,12 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
     }
 
     function cancelGigOfSeller(uint256 _id) public {
-        require(gigMap[_id].seller == msg.sender, "Not a seller of this Gig");
+        require(gigMap[_id].buyer == msg.sender, "Not a buyer of this Gig");
         require(gigMap[_id].approvedByBuyer == false, "Gig Approved by Buyer");
         require(
             gigMap[_id].approvedBySeller == true,
             "Already apporved by Seller"
         );
-
         gigMap[_id] = gig(
             address(0),
             address(0),
@@ -1306,13 +1310,14 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
             0,
             0,
             "",
+            "",
             "DELETED",
             IERC20(address(0))
         );
     }
 
     function cancelGigOfBuyer(uint256 _id) public {
-        require(gigMap[_id].buyer == msg.sender, "Not a buyer of this Gig");
+        require(gigMap[_id].seller == msg.sender, "Not a seller of this Gig");
         require(
             gigMap[_id].approvedByBuyer == true,
             "Already apporved by Buyer"
@@ -1321,32 +1326,17 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
             gigMap[_id].approvedBySeller == false,
             "Gig Not Approved by Buyer"
         );
-
         uint256 totalFee = 0;
-
-        // if (gigMap[_id].feePaidByBuyer) {
             for (uint256 i = 0; i < gigMap[_id].numberOfMilestones; i++) {
                 totalFee = totalFee.add(pricePerMilestone[_id][i]);
             }
 
             if (gigMap[_id].currency == tokens[tokens.length - 1]){
-                payable(msg.sender).transfer(totalFee);
+                payable(gigMap[_id].buyer).transfer(totalFee);
             }
             else{
-                gigMap[_id].currency.transfer(msg.sender, totalFee); // Taking platform Fee from escrow
+                gigMap[_id].currency.transfer(gigMap[_id].buyer, totalFee); // Taking platform Fee from escrow
             }
-
-            // uint256 _platformFee = totalFee.mul(platformFee).div(1000);
-            // totalFee = totalFee.add(_platformFee);
-
-        // } else {
-            // for (uint256 i = 0; i < gigMap[_id].numberOfMilestones; i++) {
-            //     totalFee = totalFee.add(pricePerMilestone[_id][i]);
-            // }
-
-            // (gigMap[_id].currency).transfer(msg.sender, totalFee); // Taking platform Fee from escrow
-        // }
-
         gigMap[_id] = gig(
             address(0),
             address(0),
@@ -1358,29 +1348,28 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
             0,
             0,
             "",
+            "",
             "DELETED",
             IERC20(address(0))
         );
     }
 
     function raiseDispute(uint256 _id) public {
+        require(checkStatus[_id]== 1, "Input Id is not in dispute");
+
+        require (mileStoneApprovedLatest [_id] <= gigMap[_id].numberOfMilestones,"Completed: Can't raise Dispute" ); 
         require(disputed[_id] == false, "Already Dispute Raised");
-        require(
-            gigMap[_id].seller == msg.sender || gigMap[_id].buyer == msg.sender,
-            "Unauthorized to cause a dispute"
-        );
-
+        require( gigMap[_id].seller == msg.sender || gigMap[_id].buyer == msg.sender, "Unauthorized to cause a dispute");
         string memory disputor;
-
         if (msg.sender == gigMap[_id].buyer) {
             disputor = "buyer";
         } else if (msg.sender == gigMap[_id].seller) {
             disputor = "seller";
         }
-
         disputeDetails[_id] = dispute(msg.sender, disputor, block.timestamp);
-
         disputed[_id] = true;
+        checkStatus[_id]= 2;
+        emit Status( _id, "Disputed");
     }
 
     function resolveDispute(
@@ -1388,6 +1377,8 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
         bool buyer,
         bool seller
     ) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(checkStatus[_id]== 2, "Input Id is not in dispute");
+
         require(disputed[_id] == true, "Gig Not in Dispute");
 
         require(
@@ -1403,27 +1394,49 @@ contract escrow_main is Ownable, ReentrancyGuard, AccessControl {
             }
         }
 
+        uint _fee = totalFee.mul(platformFee).div(1000);
+
         if (buyer) {
             // pay to buyer
             if (gigMap[_id].currency == tokens[tokens.length - 1]) {
-                payable(gigMap[_id].buyer).transfer(totalFee);
+                payable(gigMap[_id].buyer).transfer(totalFee - _fee);
             } else {
-                gigMap[_id].currency.transfer(gigMap[_id].buyer, totalFee);
+                gigMap[_id].currency.transfer(gigMap[_id].buyer, totalFee - _fee);
             }
-
-            disputeDetails[_id] = dispute(address(0), "", 0);
+            
         } else if (seller) {
             // pay to seller
+            uint currentMileStone = mileStoneApprovedLatest[_id] ;
+
+           uint toReturnAmount=  pricePerMilestone[_id][currentMileStone];
+
+           uint fee= toReturnAmount.mul(platformFee).div(1000);
+
+           uint paytobuyer;
+
+           if( gigMap[_id].numberOfMilestones> currentMileStone+1 ){
+            currentMileStone = currentMileStone+1;
+            for (uint256 i = currentMileStone ; i < gigMap[_id].numberOfMilestones; i++) {
+                if (milestoneApprovedByBuyer[_id][i] == false) {
+                    paytobuyer = paytobuyer.add(pricePerMilestone[_id][i]);
+                }
+            }
+           }
+            uint feebuyer= paytobuyer.mul(platformFee).div(1000);
             if (gigMap[_id].currency == tokens[tokens.length - 1]) {
-                payable(gigMap[_id].seller).transfer(totalFee);
+                payable(gigMap[_id].seller).transfer(toReturnAmount - fee);
+                if(paytobuyer>0) payable(gigMap[_id].buyer).transfer(paytobuyer - feebuyer);
             } else {
-                gigMap[_id].currency.transfer(gigMap[_id].seller, totalFee);
+                gigMap[_id].currency.transfer(gigMap[_id].seller, toReturnAmount - fee);
+                if(paytobuyer>0) gigMap[_id].currency.transfer(gigMap[_id].buyer, paytobuyer - feebuyer);
             }
 
             disputeDetails[_id] = dispute(address(0), "", 0);
         }
 
+        checkStatus[_id]= 3;
         disputed[_id] = false;
+        emit Status(_id, "Completed");
     }
 
     receive() external payable {}
